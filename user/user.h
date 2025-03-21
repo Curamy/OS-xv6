@@ -22,6 +22,12 @@ int getpid(void);
 char* sbrk(int);
 int sleep(int);
 int uptime(void);
+int getnice(int pid);
+int setnice(int pid, int value);
+void ps(int pid);
+uint64 meminfo(void);
+int waitpid(int pid);
+void getpname(int);
 
 // ulib.c
 int stat(const char*, struct stat*);

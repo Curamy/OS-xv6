@@ -81,6 +81,8 @@ struct trapframe {
 
 enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+#define DEFAULT_NICE 20 // 초기 nice 값 20으로 설정
+
 // Per-process state
 struct proc {
   struct spinlock lock;
@@ -104,4 +106,5 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+  int nice;
 };

@@ -5,6 +5,7 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
+#include "kalloc.h"
 
 struct cpu cpus[NCPU];
 
@@ -124,6 +125,8 @@ allocproc(void)
 found:
   p->pid = allocpid();
   p->state = USED;
+
+  p->nice = DEFAULT_NICE; // 초기 nice 값을 기본값 20으로 설정
 
   // Allocate a trapframe page.
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
@@ -691,5 +694,184 @@ procdump(void)
       state = "???";
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
+  }
+}
+
+int
+getnice(int pid)
+{
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->pid == pid && p->state != UNUSED) {
+      int nice = p->nice;
+      release(&p->lock);
+      return nice;
+    }
+    release(&p->lock);
+  }
+  
+  return -1; // pid와 일치하는 프로세스가 없으면 -1 반환
+}
+
+int
+setnice(int pid, int value)
+{
+  if (value < 0 || value > 39) {
+    return -1;
+  }
+
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if (p->pid == pid && p->state != UNUSED) {
+      p->nice = value;
+      release(&p->lock);
+      return 0;
+    }
+    release(&p->lock);
+  }
+
+  return -1; // pid와 일치하는 프로세스가 없으면 -1 반환
+}
+
+void
+ps(int pid)
+{
+  struct proc *p;
+  char *state;
+
+  if (pid == 0) { // 모든 프로세스의 정보 출력
+    printf("name        pid   state       priority\n"); // 공백 12, 6, 12
+    for (p = proc; p < &proc[NPROC]; p++) {
+      if (p->state != UNUSED) {
+        switch (p->state) { // case 0: UNUSED 일 경우는 없으니 제외
+          case 1: state = "USED"; break;
+          case 2: state = "SLEEPING"; break;
+          case 3: state = "RUNNABLE"; break;
+          case 4: state = "RUNNING"; break;
+          case 5: state = "ZOMBIE"; break;
+          default: state = "???"; break;
+        }
+        printf("%s", p->name);
+        for (int i = strlen(p->name); i < 12; i++) {
+          printf(" ");
+        }
+        // pid 출력 및 공백 처리
+        int pid_spaces = 6;  // pid 영역 전체 길이
+        int pid_len = 1;     // pid 자릿수 계산
+        int temp_pid = p->pid;
+        while (temp_pid >= 10) {
+          pid_len++;
+          temp_pid /= 10;
+        }
+        printf("%d", p->pid);
+        for (int i = pid_len; i < pid_spaces; i++) {
+          printf(" ");
+        }
+        printf("%s", state);
+        for(int i = strlen(state); i < 12; i++) {
+          printf(" ");
+        }
+        printf("%d\n", p->nice);
+      }
+    }
+  }
+
+  else { // 해당하는 프로세스의 정보만 출력하거나 없으면 아무것도 출력하지 않음
+    for (p = proc; p < &proc[NPROC]; p++) {
+      if (p->pid == pid && p->state != UNUSED) {
+        printf("name        pid   state       priority\n"); // 공백 12, 6, 12
+        switch (p->state) {
+          case 1: state = "USED"; break;
+          case 2: state = "SLEEPING"; break;
+          case 3: state = "RUNNABLE"; break;
+          case 4: state = "RUNNING"; break;
+          case 5: state = "ZOMBIE"; break;
+          default: state = "???"; break;
+        }
+        printf("%s", p->name);
+        for (int i = strlen(p->name); i < 12; i++) {
+          printf(" ");
+        }
+        // pid 출력 및 공백 처리
+        int pid_spaces = 6;  // pid 영역 전체 길이
+        int pid_len = 1;     // pid 자릿수 계산
+        int temp_pid = p->pid;
+        while (temp_pid >= 10) {
+          pid_len++;
+          temp_pid /= 10;
+        }
+        printf("%d", p->pid);
+        for (int i = pid_len; i < pid_spaces; i++) {
+          printf(" ");
+        }
+        printf("%s", state);
+        for(int i = strlen(state); i < 12; i++) {
+          printf(" ");
+        }
+        printf("%d\n", p->nice);
+        break;
+      }
+    }
+  }
+}
+
+uint64
+meminfo(void)
+{
+  uint64 freemem = getfreemem();
+  printf("available memory: %lu bytes\n", freemem);
+  return freemem;
+}
+
+int
+waitpid(int pid)
+{
+  struct proc *np; // 자식 프로세스
+  struct proc *p = myproc(); // 부모 프로세스
+  acquire(&wait_lock);
+  
+  for (;;) {
+    int found = 0;
+    for (np = proc; np < &proc[NPROC]; np++) {
+      if (np->pid != pid) { // pid가 일치하지 않으면 다음 반복으로 넘어감
+        continue;
+      } 
+      
+      if (np->parent != p) {  // 부모가 아닌 경우
+        release(&wait_lock);
+        return -1;
+      }
+
+      found = 1; // 자식 프로세스 찾음
+      if (np->state == ZOMBIE) {  // 자식이 종료된 경우
+        freeproc(np);
+        release(&wait_lock);
+        return 0;
+      }
+    }
+
+    if (!found) {  // 프로세스를 찾지 못한 경우
+      release(&wait_lock);
+      return -1;
+    }
+
+    sleep(p, &wait_lock); // 자식이 존재하고 아직 종료되지 않은 경우 대기
+  }
+}
+
+void
+getpname(int pid)
+{
+  struct proc *p;
+  for (p = proc; p < &proc[NPROC]; p++) {
+    acquire(&p->lock);
+    if(p->pid == pid && p->state != UNUSED) {
+      printf("%s\n", p->name);  // 프로세스 이름 출력
+      release(&p->lock);
+      return;
+    }
+    release(&p->lock);
   }
 }

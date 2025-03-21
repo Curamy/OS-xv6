@@ -91,3 +91,60 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_getnice(void)
+{
+  int pid;
+  argint(0, &pid); // 첫번째 인자 할당
+  int nice = getnice(pid);
+  if (nice == -1){
+    return -1;
+  }
+  return nice;
+}
+
+uint64
+sys_setnice(void)
+{
+  int pid, value;
+  argint(0, &pid); // 첫번째 인자 할당
+  argint(1, &value); // 두번째 인자 할당
+  int rt = setnice(pid, value);
+  if (rt == -1){
+    return -1;
+  }
+  return rt;
+}
+
+uint64
+sys_ps(void)
+{
+  int pid;
+  argint(0, &pid); // 첫번째 인자 할당
+  ps(pid);
+  return 0;
+}
+
+uint64
+sys_meminfo(void)
+{
+  return meminfo();
+}
+
+uint64
+sys_waitpid(void)
+{
+  int pid;
+  argint(0, &pid); // 첫번째 인자 할당
+  return waitpid(pid);
+}
+
+uint64
+sys_getpname(void)
+{
+  int pid;
+  argint(0, &pid); // 첫번째 인자 할당
+  getpname(pid);
+  return 0;
+}
